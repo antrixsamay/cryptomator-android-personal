@@ -24,14 +24,14 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Inject License Bypass Code
         run: |
-          # Find the target file path dynamically or create the directory structure
           TARGET_FILE="domain/src/main/java/org/cryptomator/domain/usecases/DoLicenseCheck.java"
-          
           mkdir -p "$(dirname "$TARGET_FILE")"
           
-          # Overwrite the file with your bypass code
           cat << 'EOF' > "$TARGET_FILE"
           package org.cryptomator.domain.usecases;
 
@@ -52,7 +52,6 @@ jobs:
               }
 
               public LicenseCheck execute() throws BackendException {
-                  // Bypass the license verification entirely and always return a valid result
                   return () -> "Bypassed";
               }
           }
@@ -67,7 +66,6 @@ jobs:
             -keypass password123 -storepass password123 \
             -dname "CN=Cryptomator Builder, OU=Dev, O=Custom, L=Unknown, ST=Unknown, C=US"
           
-          # Move it to where the signing action expects or reference it locally
           mkdir -p app/
           mv release.jks app/keystore.jks
 
@@ -77,18 +75,39 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Sign APK with Generated Keystore
-        uses: r0adkll/sign-android-release@v2
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          alias: cryptomator-key
-          releaseStorePassword: password123
-          releaseKeyPassword: password123
-          certificateStoreFile: app/keystore.jks
+      - name: Sign APK with apksigner
+        run: |
+          # Locate the built unsigned or release APK
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "Error: Could not find built APK."
+            exit 1
+          }
+          
+          echo "Found APK: $UNSIGNED_APK"
+          
+          # Find apksigner from Android SDK build-tools
+          BUILD_TOOLS_DIR=$(find $ANDROID_SDK_ROOT/build-tools -mindepth 1 -maxdepth 1 | sort -V | tail -n 1)
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          
+          if [ ! -f "$APKSIGNER" ]; then
+            echo "Error: apksigner not found."
+            exit 1
+          }
+          
+          # Align APK (optional, usually done by Gradle, but safe to verify)
+          # Sign using apksigner
+          $APKSIGNER sign --ks app/keystore.jks \
+            --ks-key-alias cryptomator-key \
+            --ks-pass pass:password123 \
+            --key-pass pass:password123 \
+            "$UNSIGNED_APK"
+            
+          echo "APK successfully signed!"
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cryptomator-unlicensed-release
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          path: app/build/outputs/apk/release/*.apk
