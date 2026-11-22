@@ -108,31 +108,7 @@ jobs:
           EOF
           echo "Successfully patched LicenseEnforcer.kt"
 
-      - name: Inject License Bypass Code
-        run: |
-          TARGET_FILE="domain/src/main/java/org/cryptomator/domain/usecases/DoLicenseCheck.java"
-          mkdir -p "$(dirname "$TARGET_FILE")"
-          cat << 'EOF' > "$TARGET_FILE"
-          package org.cryptomator.domain.usecases;
-          import org.cryptomator.domain.exception.BackendException;
-          import org.cryptomator.generator.Parameter;
-          import org.cryptomator.generator.UseCase;
-          import org.cryptomator.util.SharedPreferencesHandler;
-          @UseCase
-          public class DoLicenseCheck {
-              private final SharedPreferencesHandler sharedPreferencesHandler;
-              private String license;
-              public DoLicenseCheck(final SharedPreferencesHandler sharedPreferencesHandler, @Parameter final String license) {
-                  this.sharedPreferencesHandler = sharedPreferencesHandler;
-                  this.license = license;
-              }
-              public Object execute() throws BackendException {
-                  return () -> "Bypassed";
-              }
-          }
-          EOF
-          echo "Successfully injected license bypass code into $TARGET_FILE"
-
+      
       - name: Patch LicenseCheckActivity to Auto-Bypass
         run: |
           TARGET_FILE="android/presentation/src/main/java/org/cryptomator/presentation/ui/activity/LicenseCheckActivity.kt"
