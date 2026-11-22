@@ -86,42 +86,32 @@ jobs:
           fi
 
           chmod +x gradlew
+
       - name: Patch LicenseEnforcer to Bypass License Check
         run: |
           TARGET_FILE="android/presentation/src/main/java/org/cryptomator/presentation/licensing/LicenseEnforcer.kt"
-          
-          if [ -f "$TARGET_FILE" ]; then
-            echo "Patching $TARGET_FILE..."
-            cat << 'EOF' > "$TARGET_FILE"
-            package org.cryptomator.presentation.licensing
+          mkdir -p "$(dirname "$TARGET_FILE")"
+          cat << 'EOF' > "$TARGET_FILE"
+          package org.cryptomator.presentation.licensing
 
-            import kotlinx.coroutines.flow.Flow
-            import kotlinx.coroutines.flow.flowOf
+          import kotlinx.coroutines.flow.Flow
+          import kotlinx.coroutines.flow.flowOf
 
-            // Custom patched LicenseEnforcer to bypass checks completely
-            class LicenseEnforcer {
-                val isLicensed: Flow<Boolean> = flowOf(true)
-                val licenseState: Flow<LicenseState> = flowOf(LicenseState.VALID)
+          class LicenseEnforcer {
+              val isLicensed: Flow<Boolean> = flowOf(true)
+              val licenseState: Flow<Any> = flowOf(Any())
 
-                fun checkLicense(): Boolean {
-                    return true
-                }
-            }
-            
-            enum class LicenseState {
-                VALID, EXPIRED, UNLICENSED
-            }
-            EOF
-            echo "Successfully overwritten LicenseEnforcer.kt"
-          else
-            echo "Warning: LicenseEnforcer.kt not found at expected path, checking alternative paths..."
-            find . -name "LicenseEnforcer.kt"
-          fi
+              fun checkLicense(): Boolean {
+                  return true
+              }
+          }
+          EOF
+          echo "Successfully patched LicenseEnforcer.kt"
+
       - name: Inject License Bypass Code
         run: |
           TARGET_FILE="domain/src/main/java/org/cryptomator/domain/usecases/DoLicenseCheck.java"
           mkdir -p "$(dirname "$TARGET_FILE")"
-          
           cat << 'EOF' > "$TARGET_FILE"
           package org.cryptomator.domain.usecases;
           import org.cryptomator.domain.exception.BackendException;
@@ -132,50 +122,43 @@ jobs:
           public class DoLicenseCheck {
               private final SharedPreferencesHandler sharedPreferencesHandler;
               private String license;
-              DoLicenseCheck(final SharedPreferencesHandler sharedPreferencesHandler, @Parameter final String license) {
+              public DoLicenseCheck(final SharedPreferencesHandler sharedPreferencesHandler, @Parameter final String license) {
                   this.sharedPreferencesHandler = sharedPreferencesHandler;
                   this.license = license;
               }
-              public LicenseCheck execute() throws BackendException {
+              public Object execute() throws BackendException {
                   return () -> "Bypassed";
               }
           }
           EOF
-          
           echo "Successfully injected license bypass code into $TARGET_FILE"
+
       - name: Patch LicenseCheckActivity to Auto-Bypass
         run: |
           TARGET_FILE="android/presentation/src/main/java/org/cryptomator/presentation/ui/activity/LicenseCheckActivity.kt"
-          
-          if [ -f "$TARGET_FILE" ]; then
-            echo "Patching $TARGET_FILE..."
-            cat << 'EOF' > "$TARGET_FILE"
-            package org.cryptomator.presentation.ui.activity
+          mkdir -p "$(dirname "$TARGET_FILE")"
+          cat << 'EOF' > "$TARGET_FILE"
+          package org.cryptomator.presentation.ui.activity
 
-            import android.content.Intent
-            import android.os.Bundle
-            import org.cryptomator.generator.Activity
-            import org.cryptomator.presentation.databinding.ActivityLicenseCheckBinding
-            import org.cryptomator.presentation.intent.Intents.vaultListIntent
+          import android.content.Intent
+          import android.os.Bundle
+          import org.cryptomator.generator.Activity
+          import org.cryptomator.presentation.databinding.ActivityLicenseCheckBinding
+          import org.cryptomator.presentation.intent.Intents.vaultListIntent
 
-            @Activity
-            class LicenseCheckActivity : BaseActivity<ActivityLicenseCheckBinding>(ActivityLicenseCheckBinding::inflate) {
+          @Activity
+          class LicenseCheckActivity : BaseActivity<ActivityLicenseCheckBinding>(ActivityLicenseCheckBinding::inflate) {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val intent = vaultListIntent(this)
+                  intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                  startActivity(intent)
+                  finish()
+              }
+          }
+          EOF
+          echo "Successfully patched LicenseCheckActivity.kt"
 
-                override fun onCreate(savedInstanceState: Bundle?) {
-                    super.onCreate(savedInstanceState)
-                    // Automatically bypass license check and jump straight to vault list
-                    val intent = vaultListIntent(this)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                    finish()
-                }
-            }
-            EOF
-            echo "Successfully patched LicenseCheckActivity.kt to auto-bypass!"
-          else
-            echo "Error: LicenseCheckActivity.kt not found at expected path."
-            exit 1
-          fi
       - name: Generate Temporary Signing Keystore On-The-Fly
         shell: bash
         run: |
@@ -210,7 +193,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Dynamically search for all built APKs in the workspace
           mapfile -t APKS < <(
             find . -type f -name "*.apk" | grep -v "androidTest" || true
           )
