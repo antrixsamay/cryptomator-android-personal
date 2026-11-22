@@ -86,7 +86,37 @@ jobs:
           fi
 
           chmod +x gradlew
+      - name: Patch LicenseEnforcer to Bypass License Check
+        run: |
+          TARGET_FILE="android/presentation/src/main/java/org/cryptomator/presentation/licensing/LicenseEnforcer.kt"
+          
+          if [ -f "$TARGET_FILE" ]; then
+            echo "Patching $TARGET_FILE..."
+            cat << 'EOF' > "$TARGET_FILE"
+            package org.cryptomator.presentation.licensing
 
+            import kotlinx.coroutines.flow.Flow
+            import kotlinx.coroutines.flow.flowOf
+
+            // Custom patched LicenseEnforcer to bypass checks completely
+            class LicenseEnforcer {
+                val isLicensed: Flow<Boolean> = flowOf(true)
+                val licenseState: Flow<LicenseState> = flowOf(LicenseState.VALID)
+
+                fun checkLicense(): Boolean {
+                    return true
+                }
+            }
+            
+            enum class LicenseState {
+                VALID, EXPIRED, UNLICENSED
+            }
+            EOF
+            echo "Successfully overwritten LicenseEnforcer.kt"
+          else
+            echo "Warning: LicenseEnforcer.kt not found at expected path, checking alternative paths..."
+            find . -name "LicenseEnforcer.kt"
+          fi
       - name: Inject License Bypass Code
         run: |
           TARGET_FILE="domain/src/main/java/org/cryptomator/domain/usecases/DoLicenseCheck.java"
