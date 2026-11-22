@@ -33,7 +33,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the existing GitHub Actions Android SDK
           ANDROID_SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           ANDROID_HOME="$ANDROID_SDK_ROOT"
 
@@ -42,7 +41,6 @@ jobs:
 
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
 
-          # Download official Android command-line tools
           CMDTOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
 
           curl -fL --retry 5 --retry-all-errors \
@@ -58,16 +56,13 @@ jobs:
 
           rm -f "$RUNNER_TEMP/cmdtools.zip"
 
-          # Configure PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
 
-          # Accept licenses
           yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
 
-          # Install required Android packages
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "build-tools;34.0.0" \
@@ -91,7 +86,7 @@ jobs:
           fi
 
           chmod +x gradlew
-      
+
       - name: Inject License Bypass Code
         run: |
           TARGET_FILE="domain/src/main/java/org/cryptomator/domain/usecases/DoLicenseCheck.java"
@@ -118,6 +113,7 @@ jobs:
           EOF
           
           echo "Successfully injected license bypass code into $TARGET_FILE"
+
       - name: Generate Temporary Signing Keystore On-The-Fly
         shell: bash
         run: |
@@ -134,7 +130,6 @@ jobs:
             -dname "CN=Cryptomator Builder, OU=Dev, O=Custom, L=Unknown, ST=Unknown, C=US"
 
           mkdir -p app/
-
           cp "$RUNNER_TEMP/release.jks" app/keystore.jks
 
           echo "Temporary keystore generated successfully."
@@ -143,7 +138,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ./gradlew assembleRelease --no-daemon
         env:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
@@ -154,19 +148,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK_DIR="app/build/outputs/apk/release"
-
-          if [[ ! -d "$APK_DIR" ]]; then
-            echo "::error::APK output directory not found: $APK_DIR"
-            exit 1
-          fi
-
+          # Dynamically search for all built APKs in the workspace
           mapfile -t APKS < <(
-            find "$APK_DIR" -maxdepth 1 -type f -name "*.apk"
+            find . -type f -name "*.apk" | grep -v "androidTest" || true
           )
 
           if [[ ${#APKS[@]} -eq 0 ]]; then
-            echo "::error::Could not find built APK."
+            echo "::error::Could not find any built APK in the workspace."
             exit 1
           fi
 
@@ -174,29 +162,27 @@ jobs:
           APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
 
           if [[ ! -x "$APKSIGNER" ]]; then
-            echo "::error::apksigner not found."
+            echo "::error::apksigner not found at $APKSIGNER."
             exit 1
           fi
 
           for APK in "${APKS[@]}"; do
             echo "Signing APK: $APK"
-
             "$APKSIGNER" sign \
               --ks app/keystore.jks \
               --ks-key-alias cryptomator-key \
               --ks-pass pass:password123 \
               --key-pass pass:password123 \
               "$APK"
-
             "$APKSIGNER" verify --verbose "$APK"
-
-            echo "APK successfully signed: $APK"
+            echo "Successfully signed: $APK"
           done
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cryptomator-unlicensed-release
-          path: app/build/outputs/apk/release/*.apk
+          path: |
+            **/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
