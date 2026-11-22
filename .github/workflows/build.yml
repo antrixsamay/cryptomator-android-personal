@@ -88,24 +88,22 @@ jobs:
           chmod +x gradlew
       - name: Patch FlavorConfig to Force Premium Mode
         run: |
-          TARGET_FILE="util/src/main/java/org/cryptomator/util/FlavorConfig.kt"
-          # Find file dynamically just in case path varies slightly across versions
           FOUND_FILE=$(find . -type f -name "FlavorConfig.kt" | head -n 1)
           
           if [ -n "$FOUND_FILE" ]; then
             echo "Patching $FOUND_FILE..."
             cat << 'EOF' > "$FOUND_FILE"
-            package org.cryptomator.util
+          package org.cryptomator.util
 
-            object FlavorConfig {
-                val isPremiumFlavor: Boolean = true
-                val isFreemiumFlavor: Boolean = false
-                val isApkStoreFlavor: Boolean = false
-                val isLiteFlavor: Boolean = false
-                val isAccrescentFlavor: Boolean = false
-                val excludesGoogleDrive: Boolean = false
-            }
-            EOF
+          object FlavorConfig {
+              val isPremiumFlavor: Boolean = true
+              val isFreemiumFlavor: Boolean = false
+              val isApkStoreFlavor: Boolean = false
+              val isLiteFlavor: Boolean = false
+              val isAccrescentFlavor: Boolean = false
+              val excludesGoogleDrive: Boolean = false
+          }
+          EOF
             echo "Successfully forced FlavorConfig to premium!"
           else
             echo "Error: FlavorConfig.kt not found."
